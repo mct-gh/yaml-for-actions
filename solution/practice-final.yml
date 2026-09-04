@@ -1,0 +1,36 @@
+name: Octo-Fortune
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  draw:
+    name: Draw a fortune
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    outputs:
+      fortune: ${{ steps.pick.outputs.text }}
+    env:
+      FORTUNE_FOR: ${{ github.actor }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Pick fortune
+        id: pick
+        run: |
+          python --version
+          echo "text=$(python scripts/fortune.py)" >> "$GITHUB_OUTPUT"
+  announce:
+    needs: draw
+    if: ${{ needs.draw.outputs.fortune != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "$MSG"
+        env:
+          MSG: ${{ needs.draw.outputs.fortune }}
