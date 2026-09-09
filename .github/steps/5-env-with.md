@@ -13,7 +13,7 @@ jobs:
     env:
       FORTUNE_FOR: Mona          # 이 job의 모든 step에 적용
     steps:
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:                    # 이 action에만 전달
           python-version: "3.12"
       - run: python scripts/fortune.py

@@ -9,7 +9,7 @@ jobs:
     outputs:
       fortune: ${{ steps.pick.outputs.text }}     # 3) job 밖으로 내보냄
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - id: pick                                   # 1) step에 이름표
         run: echo "text=$(python scripts/fortune.py)" >> "$GITHUB_OUTPUT"   # 2) 파일에 기록
 

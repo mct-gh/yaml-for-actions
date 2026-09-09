@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""학습자의 practice.yml을 현재 STEP 규칙으로 채점한다.
-
-핵심 교육 포인트: YAML 문서는 파이썬 dict/list로 그대로 로드된다.
-따라서 채점기는 정규식이 아니라 자료구조 탐색으로 작성되어 있다.
-"""
+# 학습자의 practice.yml을 현재 STEP 규칙으로 채점한다.
+#
+# 핵심 교육 포인트: YAML 문서는 파이썬 dict/list로 그대로 로드된다.
+# 따라서 채점기는 정규식이 아니라 자료구조 탐색으로 작성되어 있다.
 from __future__ import annotations
 
 import pathlib
@@ -15,6 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 STEP_FILE = ROOT / ".github/script/STEP"
 PRACTICE = ROOT / ".github/workflows/practice.yml"
 LAST_STEP = 8
+CURRENT_STEP = 0
 
 
 def load() -> dict:
@@ -32,8 +32,8 @@ def load() -> dict:
     return doc
 
 
+# on: 은 YAML 1.1 에서 불리언 True 로 파싱된다 - 두 키를 모두 확인한다
 def triggers(doc: dict):
-    """`on:`은 YAML 1.1에서 불리언 True로 파싱된다 — 두 키를 모두 확인."""
     return doc.get("on", doc.get(True))
 
 
@@ -55,14 +55,31 @@ def steps_of(job: dict) -> list:
     return s
 
 
+# 중첩 구조 전체를 문자열로 펼친다 (표현식 탐색용)
 def flat_text(node) -> str:
-    """중첩 구조 전체를 문자열로 펼친다 (표현식 탐색용)."""
     return yaml.safe_dump(node, allow_unicode=True, default_flow_style=False)
 
 
+# 실패 리포트는 GitHub Skills exercise-toolkit 의 step-results-table 스타일을 따른다
 def fail(msg: str) -> None:
     print(f"::error::{msg}")
-    pathlib.Path("result.md").write_text(f"### ❌ 아직입니다\n\n{msg}\n", encoding="utf-8")
+    line_count = len(msg.splitlines())
+    summary = msg.splitlines()[0] if line_count > 1 else msg
+    parts = [
+        f"## Step {CURRENT_STEP} - Fail ❌",
+        "",
+        '<img src="https://octodex.github.com/images/spidertocat.png" align="right" height="100px" alt="Spidertocat image indicating the step failed" />',
+        "",
+        "채점을 통과하지 못했습니다. 아래를 고치고 다시 push 하세요.",
+        "",
+        "| Status | Description |",
+        "| ------ | ----------- |",
+        f"| ❌ - Fail | {msg if line_count == 1 else summary} |",
+        "",
+    ]
+    if line_count > 1:
+        parts += ["", msg, ""]
+    pathlib.Path("result.md").write_text(chr(10).join(parts), encoding="utf-8")
     sys.exit(1)
 
 
@@ -89,12 +106,12 @@ def step2(doc):
 def step3(doc):
     s = steps_of(first_job(doc))
     uses = [x.get("uses", "") for x in s if isinstance(x, dict)]
-    if not any(u.startswith("actions/checkout@") for u in uses):
-        fail("`actions/checkout@v5` step이 필요합니다.")
-    if not any(u.startswith("actions/setup-python@") for u in uses):
-        fail("`actions/setup-python@v5` step이 필요합니다.")
     if any(u and "@" not in u for u in uses):
-        fail("모든 `uses:`에 버전을 고정하세요. 예: `actions/checkout@v5`")
+        fail("모든 `uses:`에 버전을 고정하세요. 예: `actions/checkout@v7`")
+    if not any(u.startswith("actions/checkout@") for u in uses):
+        fail("`actions/checkout@v7` step이 필요합니다.")
+    if not any(u.startswith("actions/setup-python@") for u in uses):
+        fail("`actions/setup-python@v7` step이 필요합니다.")
     if not any(isinstance(x, dict) and "run" in x for x in s):
         fail("`run:` step이 최소 1개 필요합니다.")
 
@@ -168,7 +185,9 @@ RULES = {1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8
 
 
 def main() -> None:
+    global CURRENT_STEP
     step = int(STEP_FILE.read_text().strip() or 0)
+    CURRENT_STEP = step
     if step < 1 or step > LAST_STEP:
         print(f"채점 대상 단계 아님 (STEP={step}). 종료.")
         return

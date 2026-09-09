@@ -8,7 +8,7 @@
       matrix:
         python-version: ["3.11", "3.12", "3.13"]   # 3개 job 동시 실행
     steps:
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 ```

@@ -36,7 +36,7 @@
 |---|---|---|---|
 | 1 | `1-mapping.md` | 매핑, 들여쓰기, 주석, `name`/`on`/`jobs` | 파싱 성공 + 3대 키 존재 + job에 `runs-on` |
 | 2 | `2-sequence.md` | 시퀀스 `-`, step 매핑, `name` | `steps` 길이 ≥ 2 |
-| 3 | `3-run-uses.md` | `run` vs `uses`, `@v5` 버전 고정 | checkout(핀) + setup-python + run 각 1개 |
+| 3 | `3-run-uses.md` | `run` vs `uses`, `@v7` 버전 고정 | checkout(핀) + setup-python + run 각 1개 |
 | 4 | `4-scalars.md` | `\|`, `>`, 따옴표, 버전 문자열 | 멀티라인 run + `python-version`이 문자열 |
 | 5 | `5-env-with.md` | `env`, `with`, 스코프 | step/job `env` 존재 + 값이 로그에 출력 |
 | 6 | `6-expressions.md` | `${{ }}`, `github.*`, `secrets.*` | 표현식에 `github.` 컨텍스트 사용 |
@@ -49,8 +49,8 @@
 ```
 학습자 push (main)
    └─> .github/workflows/check-step.yml  (on: push)
-         ├─ actions/checkout@v5
-         ├─ actions/setup-python@v5  + pip install pyyaml
+         ├─ actions/checkout@v7
+         ├─ actions/setup-python@v7  + pip install pyyaml
          ├─ python .github/script/verify.py   ← 현재 STEP 규칙으로 practice.yml 채점
          │     ├─ 실패: 이슈에 힌트 코멘트, STEP 유지, 워크플로 실패
          │     └─ 성공: STEP += 1
@@ -60,6 +60,24 @@
 - 상태 저장: `.github/script/STEP` (한 줄 정수). 파이썬으로 읽고 쓰기 때문에 별도 액션 불필요.
 - 게시 수단: `gh issue comment`(GitHub CLI는 러너에 기본 설치) + `GITHUB_TOKEN`.
 - 권한: `permissions: { contents: write, issues: write }` — 8단계에서 배울 개념을 채점기가 먼저 시범 보임.
+
+### 무한 루프가 나지 않는 이유 (고칠 때 반드시 볼 것)
+
+채점 워크플로 자체가 커밋을 밀기 때문에 원래는 자기 자신을 다시 트리거할 수 있습니다. 두 겹으로 막혀 있습니다.
+
+1. `check-step.yml` 의 `paths` 가 `practice.yml` 하나뿐입니다. 워크플로가 커밋하는 것은 `STEP` 파일이라 경로가 겹치지 않습니다.
+2. `GITHUB_TOKEN` 으로 만든 푸시는 새 워크플로 실행을 트리거하지 않습니다. 이것은 GitHub Actions 의 규칙입니다.
+
+경로 필터를 나중에 넓히더라도 2번이 남아 있어 안전합니다. 다만 채점을 PAT 로 푸시하도록 바꾸면 1번만 남으므로 그때는 조심해야 합니다.
+
+### 실패를 두 종류로 나눈다
+
+`if: failure()` 하나로 잡으면 학습자 잘못과 환경 문제가 섞입니다. `steps.verify.outcome` 으로 갈라 놓았습니다.
+
+- `verify` 스텝이 실패 = 학습자의 YAML 문제. `result.md` 를 이슈에 붙입니다. 파일이 없으면 기본 메시지를 만들어 넣습니다.
+- 그 앞 스텝(체크아웃, 파이썬, `pip install`)이 실패 = 환경 문제. 채점을 못 돌렸다고 따로 알립니다.
+
+추적 이슈는 제목으로 찾습니다. 학습자가 다른 이슈를 열어도 코멘트가 엉키지 않습니다.
 
 ## 5. 파일 트리
 
@@ -72,7 +90,7 @@
     ├── script/
     │   ├── STEP                  현재 단계 (초기값 0)
     │   └── verify.py             PyYAML 채점기 + 단계별 규칙
-    ├── steps/1-mapping.md … x-review.md
+    ├── steps/0-welcome.md, 1-mapping.md … x-review.md
     └── workflows/
         ├── 0-start-exercise.yml  템플릿 복사 직후 1회 실행, 추적 이슈 생성
         ├── check-step.yml        매 push마다 채점
