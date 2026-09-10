@@ -1,0 +1,44 @@
+name: Step 0, Start exercise
+
+# 템플릿을 복사한 직후 1회 실행되어 추적 이슈를 만들고 STEP을 1로 올린다.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  start:
+    name: Start exercise
+    if: ${{ !github.event.repository.is_template }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Read current step
+        id: guard
+        run: echo "current=$(cat .github/script/STEP)" >> "$GITHUB_OUTPUT"
+
+      - name: Create tracking issue
+        if: steps.guard.outputs.current == '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sed "s/{{ login }}/@${GITHUB_ACTOR}/" .github/steps/0-welcome.md > issue-body.md
+          echo "---" >> issue-body.md
+          echo >> issue-body.md
+          cat .github/steps/1-mapping.md >> issue-body.md
+          gh issue create --title "YAML for GitHub Actions - 실습 진행" --body-file issue-body.md
+
+      - name: Advance to step 1
+        if: steps.guard.outputs.current == '0'
+        run: |
+          echo "1" > .github/script/STEP
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/script/STEP
+          git diff --cached --quiet || git commit -m "Start exercise: STEP=1"
+          git push
