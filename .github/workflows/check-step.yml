@@ -1,0 +1,101 @@
+name: Check step
+
+# 학습자가 practice.yml을 push할 때마다 파이썬 채점기를 돌린다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/practice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  grade:
+    name: Grade current step
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Read current step
+        id: step
+        run: echo "number=$(cat .github/script/STEP)" >> "$GITHUB_OUTPUT"
+
+      # 추적 이슈를 제목으로 찾는다. 학습자가 다른 이슈를 열어도 코멘트가 엉키지 않는다.
+      - name: Find tracking issue
+        id: issue
+        run: |
+          number=$(gh issue list --state open --limit 50 --json number,title --jq 'map(select(.title | contains("YAML for GitHub Actions"))) | .[0].number // empty')
+          if [ -z "$number" ]; then
+            number=$(gh issue list --state open --limit 1 --json number --jq '.[0].number // empty')
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Verify
+        id: verify
+        run: python .github/script/verify.py
+
+      # 채점기가 실패한 경우. result.md 가 없으면 기본 메시지를 만들어 넣는다.
+      - name: Post feedback on failure
+        if: failure() && steps.verify.outcome == 'failure' && steps.issue.outputs.number != ''
+        run: |
+          if [ ! -f result.md ]; then
+            echo "## Step ${{ steps.step.outputs.number }} - Fail" > result.md
+            echo >> result.md
+            echo "채점기가 결과를 남기지 못했습니다. Actions 로그를 확인하세요." >> result.md
+          fi
+          gh issue comment "${{ steps.issue.outputs.number }}" --body-file result.md
+
+      # 채점 전 단계(체크아웃, 파이썬, pip)가 실패한 경우. 학습자 잘못이 아니다.
+      - name: Report infrastructure failure
+        if: failure() && steps.verify.outcome != 'failure' && steps.issue.outputs.number != ''
+        run: |
+          echo "## 채점을 돌리지 못했습니다" > infra.md
+          echo >> infra.md
+          echo "여러분의 YAML 문제가 아니라 채점 환경 준비 단계가 실패했습니다." >> infra.md
+          echo "Actions 탭에서 실행 로그를 확인하고, 같은 커밋을 다시 push 하거나 Re-run 하세요." >> infra.md
+          gh issue comment "${{ steps.issue.outputs.number }}" --body-file infra.md
+
+      - name: Publish next step
+        if: success()
+        env:
+          PASSED: ${{ steps.step.outputs.number }}
+          ISSUE: ${{ steps.issue.outputs.number }}
+        run: |
+          next=$(cat .github/script/STEP)
+          echo "## Step ${PASSED} - Passed ✅" > passed.md
+          echo >> passed.md
+          echo '<img src="https://octodex.github.com/images/inflatocat.png" align="right" height="150px" alt="Inflatocat image indicating the step passed" />' >> passed.md
+          echo >> passed.md
+          echo "Nice work! 다음 내용을 준비했습니다. 🤓" >> passed.md
+          if [ -n "$ISSUE" ]; then
+            gh issue comment "$ISSUE" --body-file passed.md
+          fi
+          file=$(ls .github/steps/${next}-*.md 2>/dev/null | head -1)
+          if [ -n "$file" ] && [ -n "$ISSUE" ]; then
+            gh issue comment "$ISSUE" --body-file "$file"
+          elif [ -n "$ISSUE" ]; then
+            echo '<img src="https://octodex.github.com/images/welcometocat.png" align="left" height="150px" alt="Welcometocat image celebrating the finish" />' > finish.md
+            echo >> finish.md
+            cat .github/steps/x-review.md >> finish.md
+            gh issue comment "$ISSUE" --body-file finish.md
+            gh issue close "$ISSUE"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/script/STEP
+          git diff --cached --quiet || git commit -m "Advance to step ${next}"
+          git push
